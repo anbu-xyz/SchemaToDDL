@@ -42,13 +42,19 @@ class ExtractDDL {
         String sql="""
             SELECT object_name FROM ALL_OBJECTS WHERE (owner = :owner and object_type=:objectType)
         """
+        objectType=objectType?.toUpperCase()
         def objects=this.sourceConnection.rows([owner: this.sourceSchema,
-                                                objectType: objectType?.toUpperCase()], sql)
-        def ddlStrings=[:]
+                                                objectType: objectType], sql)
+        List<DDLObject> allDDLs=[]
         for(def object: objects) {
-            ddlStrings.put(object.OBJECT_NAME, genericDDL(objectType, object.OBJECT_NAME))
+            DDLObject ddlObject=new DDLObject(
+                    objectName: object.OBJECT_NAME,
+                    objectType: objectType,
+                    ddls: [genericDDL(objectType, object.OBJECT_NAME)] as List<String>
+            )
+            allDDLs.add(ddlObject)
         }
-        println ddlStrings
+        return allDDLs.asImmutable()
     }
 
     public ExtractDDL(Sql sourceConnection, String sourceSchema, ExtractDDLOptions options) {
@@ -58,20 +64,33 @@ class ExtractDDL {
     }
 
     public tableDDLs() {
-        def ddlStrings=[:]
+        List<DDLObject> allTableDDLs=[]
         initConnectionProperties()
         def tables=sourceConnection.rows([owner: this.sourceSchema], """
-            SELECT object_name as TABLE_NAME FROM ALL_OBJECTS WHERE (owner = :owner and object_type='TABLE')
-                      AND (owner, object_name) NOT IN (
-                           SELECT owner, mview_name
-                             FROM all_mviews
-                           UNION ALL
-                           SELECT log_owner, log_table
-                             FROM all_mview_logs
-                      )
+            with fkrel as (
+                SELECT a.table_name, a.owner, count(*) FKCOUNT
+                FROM all_cons_columns a
+                JOIN all_constraints c ON a.owner = c.owner
+                AND a.constraint_name = c.constraint_name
+                WHERE c.constraint_type = 'R'
+                AND a.owner = :owner
+                group by a.table_name, a.owner
+            )
+            SELECT t.object_name as TABLE_NAME FROM ALL_OBJECTS t
+              LEFT OUTER JOIN fkrel on t.object_name=fkrel.table_name and t.owner = fkrel.owner
+            WHERE (t.owner = :owner and t.object_type='TABLE')
+                  AND (t.owner, t.object_name) NOT IN (
+              SELECT owner, mview_name
+              FROM all_mviews
+              UNION ALL
+              SELECT log_owner, log_table
+              FROM all_mview_logs
+            )
+            group by t.object_name, t.owner, fkrel.FKCOUNT
+            order by nvl(fkrel.FKCOUNT,0)
         """);
-        def ddlList=[]
         for(def table:tables) {
+            List ddlList=[]
             String tableName=table.TABLE_NAME?.toUpperCase()
             ddlList.add(genericDDL('TABLE', tableName))
             def comments=sourceConnection.rows([owner: this.sourceSchema, tableName: tableName], """
@@ -94,9 +113,10 @@ class ExtractDDL {
             for(def index: indexes) {
                 ddlList.add(genericDDL('INDEX', index.INDEX_NAME))
             }
-            ddlStrings.put(tableName, ddlList)
+            def ddlObject=new DDLObject(objectName: table.TABLE_NAME?.toUpperCase(), objectType: 'TABLE', ddls: ddlList)
+            allTableDDLs.add(ddlObject)
         }
-        return ddlStrings
+        return allTableDDLs.asImmutable()
     }
 
     static void main(String[] args) {
@@ -108,10 +128,14 @@ class ExtractDDL {
                 user, "oracle", "oracle.jdbc.OracleDriver")
         ExtractDDLOptions options=new ExtractDDLOptions(includeSchemaName: true)
         def extractDdl=new ExtractDDL(conn, 'hr', options)
-        extractDdl.tableDDLs()
+        List<DDLObject> fullDdlList=[]
+        fullDdlList.addAll(extractDdl.tableDDLs())
         for(String type: ['VIEW', 'PROCEDURE', 'PACKAGE', 'SEQUENCE', 'SYNONYM',
                 'TRIGGER', 'MATERIALIZED VIEW', 'LIBRARY', 'TYPE', 'FUNCTION']) {
-            extractDdl.genericDDLForType(type)
+            fullDdlList.addAll(extractDdl.genericDDLForType(type))
+        }
+        for(def ddlObject: fullDdlList) {
+            println ddlObject
         }
     }
 }
