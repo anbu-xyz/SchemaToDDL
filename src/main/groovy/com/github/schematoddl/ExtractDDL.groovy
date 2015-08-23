@@ -101,14 +101,20 @@ class ExtractDDL {
                     AND comments is not null
             """);
             for(def comment: comments) {
-                ddlList.add("COMMENT ON COLUMN ${this.sourceSchema}.${tableName}.${comment.COLUMN_NAME} " +
+                ddlList.add("COMMENT ON COLUMN \"${this.sourceSchema}\".\"${tableName}\".\"${comment.COLUMN_NAME}\" " +
                         "IS '${comment.COMMENTS.replaceAll("'", "''")}';")
             }
             def indexes=sourceConnection.rows([owner: this.sourceSchema, tableName: tableName], """
-                 SELECT index_name
+                 SELECT index_name as INDEX_NAME
                    FROM all_indexes
                   WHERE owner = :owner
                     AND table_name= :tableName
+                 MINUS
+                 SELECT constraint_name as INDEX_NAME
+                   FROM all_constraints
+                  WHERE owner = :owner
+                   AND table_name = :tableName
+                   AND constraint_type = 'P'
             """)
             for(def index: indexes) {
                 ddlList.add(genericDDL('INDEX', index.INDEX_NAME))
@@ -134,8 +140,6 @@ class ExtractDDL {
                 'TRIGGER', 'MATERIALIZED VIEW', 'LIBRARY', 'TYPE', 'FUNCTION']) {
             fullDdlList.addAll(extractDdl.genericDDLForType(type))
         }
-        for(def ddlObject: fullDdlList) {
-            println ddlObject
-        }
+        new DDLFileWriter().writeToDisk(fullDdlList, new File('/tmp/ddl'))
     }
 }
