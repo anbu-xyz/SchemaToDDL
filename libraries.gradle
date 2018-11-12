@@ -50,7 +50,7 @@ project.libraries = [
     'junit4':
         'junit:junit:4.+',
     'oracle-ojdbc':
-        'com.oracle:ojdbc6:11.2.0',
+        'com.oracle:ojdbc6:11.2.0.3',
     'jwebunit':
         [ 'jwebunit-core', 'jwebunit-htmlunit-plugin'].collect { "net.sourceforge.jwebunit:${it}:3.2" }
 ]

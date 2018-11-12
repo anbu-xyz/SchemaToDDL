@@ -1,1 +1,9 @@
-/home/anbu/code_models/java/java_gitignore
+build
+bin
+test-output
+.settings
+.project
+.classpath
+.idea/
+*.iml
+.gradle/

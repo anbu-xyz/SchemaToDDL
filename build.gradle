@@ -9,12 +9,13 @@ targetCompatibility = 1.7
 version = '1.0'
 
 repositories {
+    jcenter()
     mavenLocal()
     mavenCentral()
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '2.0'
+    gradleVersion = '4.0'
 }
 
 dependencies {
