@@ -7,13 +7,13 @@ node {
       sh "git clean -fdx"
     }
     stage('compile') {
-      echo "nothing to compile for hello.sh..."
+      echo "./gradlew compile"
     }
     stage('test') {
-      sh "./test_hello.sh"
+      sh "./gradlew test"
     }
     stage('package') {
-      sh "tar -cvzf hello.tar.gz hello.sh"
+      sh "./gradlew jar"
     }
     stage('publish') {
       echo "uploading package..."
